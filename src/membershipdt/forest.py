@@ -31,17 +31,15 @@ class MembershipRandomForest:
         n = len(yb)
         base = np.ones(n) if sample_weight is None else np.asarray(sample_weight, np.float64)
         seeds = np.random.SeedSequence(self.random_state).spawn(self.n_estimators)
-        rngs = [np.random.default_rng(s) for s in seeds]
-        weights = [base * rng.multinomial(n, np.full(n, 1 / n)) if self.bootstrap else base for rng in rngs]
-        tree_seeds = [s.generate_state(1, np.uint64)[0] for s in seeds]
 
-        def fit_one(args):
-            w, seed = args
-            t = self.make_tree(seed)
+        def fit_one(ss):
+            rng = np.random.default_rng(ss)
+            w = base * np.bincount(rng.integers(0, n, n), minlength=n) if self.bootstrap else base
+            t = self.make_tree(ss.generate_state(1, np.uint64)[0])
             t.n_features_, t.vocab_, t.classes_ = V, None, self.classes_
             return t.fit_encoded(indptr, indices, yb, w)
 
-        with ThreadPoolExecutor(self.threads) as ex: self.estimators_ = list(ex.map(fit_one, zip(weights, tree_seeds)))
+        with ThreadPoolExecutor(self.threads) as ex: self.estimators_ = list(ex.map(fit_one, seeds))
         self.pack()
         return self
 

@@ -49,6 +49,10 @@ or a pre-encoded `(indptr, indices)` CSR pair (then pass `n_features=`).
   in threads with the GIL released.
 - forest predict walks all trees per sample in parallel (openmp), proba = mean of leaf fractions.
 - unseen tokens at predict time are dropped, they can't matter anyway.
+- single tree proba = leaf's weighted positives / weighted total. forest proba = mean of that over trees.
+- binary labels only. `min_samples_leaf` / `min_samples_split` count weighted (bootstrapped) samples.
+- the slow part for raw python tokens is the dict encoding (pure python, O(nnz)). the forest encodes
+  once, not per tree. hand in `(indptr, indices)` or a scipy csr to skip it entirely.
 - cv: `cross_val_score`, `GridSearchCV`, `RandomizedSearchCV`, scorers accuracy / auc / neg_log_loss / neg_brier.
 
 ## bench

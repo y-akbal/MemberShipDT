@@ -80,3 +80,21 @@ def test_remap_keeps_token_names(backend):
     np.testing.assert_array_equal(f.predict(X), y)
     imp = f.feature_importances()
     assert imp.shape == (3,) and abs(imp.sum() - 1) < 1e-9
+
+
+@pytest.mark.skipif(__import__("membershipdt.encoding", fromlist=["_cy"])._cy is None, reason="cython not built")
+def test_remap_kernel_matches_numpy():
+    from membershipdt import encoding as E
+    rng = np.random.default_rng(0)
+    for n, V, L in [(200, 30, 5), (50, 500, 120), (1, 10, 0), (300, 3, 3)]:
+        rows = [np.sort(rng.choice(V, size=rng.integers(0, L + 1), replace=False)).astype(np.int32) for _ in range(n)]
+        indptr = np.cumsum([0] + [len(r) for r in rows]).astype(np.int64)
+        indices = np.concatenate(rows).astype(np.int32) if indptr[-1] else np.empty(0, np.int32)
+        perm, inv = E.frequency_perm(indices, V)
+        cy, cy_arr = E._cy, E._cy
+        E._cy = None
+        try: ref = E.remap(indptr, indices, inv)[1]
+        finally: E._cy = cy
+        got = E.remap(indptr, indices, inv)[1]
+        np.testing.assert_array_equal(got, ref)
+        for i in range(n): assert np.all(np.diff(got[indptr[i]:indptr[i + 1]]) > 0)
