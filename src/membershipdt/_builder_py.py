@@ -76,10 +76,19 @@ def build_tree(indptr, indices, y, w, V, max_depth, min_samples_leaf, min_sample
     return dict(feature=np.array(feature, np.int32), left=np.array(left, np.int32), right=np.array(right, np.int32), n_total=np.array(n_total), n_pos=np.array(n_pos))
 
 
-def apply(indptr, indices, feature, left, right):
+def apply(indptr, indices, feature, left, right, n_jobs=0):
     out = np.empty(len(indptr) - 1, np.int64)
     for i in range(len(out)):
         row, node = set(indices[indptr[i]:indptr[i + 1]].tolist()), 0
         while feature[node] >= 0: node = right[node] if feature[node] in row else left[node]
         out[i] = node
     return out
+
+
+def predict_forest(indptr, indices, feature, left, right, p1, offsets, n_jobs=0):
+    out = np.zeros(len(indptr) - 1)
+    for k in range(len(offsets) - 1):
+        f, l, r = feature[offsets[k]:offsets[k + 1]] , left[offsets[k]:offsets[k + 1]] - offsets[k], right[offsets[k]:offsets[k + 1]] - offsets[k]
+        f = np.where(f >= 0, f, -1)
+        out += p1[offsets[k] + apply(indptr, indices, f, l, r)]
+    return out / (len(offsets) - 1)

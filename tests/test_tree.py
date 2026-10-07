@@ -92,11 +92,10 @@ def test_scipy_sparse_input(backend):
     X, y = random_sets(rng, 100, 20, 5)
     M = sp.csr_matrix(dense(X, 20).astype(float))
     t1 = MembershipDecisionTree(max_depth=4, backend=backend).fit(M, y)
-    t2 = MembershipDecisionTree(max_depth=4, backend=backend)
-    t2.n_features_, t2.vocab_, t2.classes_ = 20, None, np.array([0, 1])
     idx = np.array([int(t) for row in X for t in sorted(set(row))], np.int32)
-    t2.fit_encoded(np.cumsum([0] + [len(set(r)) for r in X]), idx, y.astype(float), np.ones(100))
-    np.testing.assert_array_equal(t1.tree_["feature"], t2.tree_["feature"])
+    t2 = MembershipDecisionTree(max_depth=4, backend=backend).fit((np.cumsum([0] + [len(set(r)) for r in X]), idx), y, n_features=20)
+    np.testing.assert_array_equal(t1.feature_, t2.feature_)
+    assert set(t1.feature_[t1.feature_ >= 0]) <= set(range(20))
     np.testing.assert_array_equal(t1.predict(M), t2.predict_proba(M).argmax(1))
 
 

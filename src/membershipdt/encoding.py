@@ -1,6 +1,11 @@
 from __future__ import annotations
 import numpy as np
 
+try:
+    from . import _builder_cy as _cy
+except ImportError:
+    _cy = None
+
 __all__ = ["Vocab", "encode", "as_csr"]
 
 
@@ -49,15 +54,44 @@ def normalize_csr(indptr, indices, n_features):
 def as_csr(X, vocab, grow):
     if isinstance(X, tuple) and len(X) == 2 and hasattr(X[0], "__len__") and not isinstance(X[0], (list, set, frozenset)):
         indptr, indices = np.asarray(X[0]), np.asarray(X[1])
-        V = (int(indices.max()) + 1 if indices.size else 0) if grow else vocab
+        V = max(int(indices.max()) + 1 if indices.size else 0, vocab or 0) if grow else vocab
         indptr, indices = normalize_csr(indptr, indices, V)
         return indptr, indices, V, None
     if hasattr(X, "tocsr") and hasattr(X, "shape"):
         Xc = X.tocsr()
         Xc.eliminate_zeros()
-        V = Xc.shape[1] if grow else vocab
+        V = max(Xc.shape[1], vocab or 0) if grow else vocab
         indptr, indices = normalize_csr(Xc.indptr, Xc.indices, V)
         return indptr, indices, V, None
-    vocab = Vocab() if vocab is None else vocab
+    vocab = Vocab() if vocab is None or isinstance(vocab, int) else vocab
     indptr, indices = encode(X, vocab, grow)
     return indptr, indices, len(vocab), vocab
+
+
+def frequency_perm(indices, V):
+    df = np.bincount(indices, minlength=V)
+    perm = np.argsort(-df, kind="stable").astype(np.int32)
+    inv = np.empty(V, np.int32)
+    inv[perm] = np.arange(V, dtype=np.int32)
+    return perm, inv
+
+
+def remap(indptr, indices, inv):
+    if indices.size == 0: return indptr, indices
+    if _cy is not None: return indptr, _cy.remap(np.ascontiguousarray(indptr, np.int64), np.ascontiguousarray(indices, np.int32), np.ascontiguousarray(inv, np.int32))
+    n = indptr.shape[0] - 1
+    new = inv[indices].astype(np.int64)
+    row = np.repeat(np.arange(n, dtype=np.int64), np.diff(indptr))
+    order = np.lexsort((new, row))
+    return indptr, new[order].astype(np.int32)
+
+
+def take_rows(indptr, indices, rows):
+    rows = np.asarray(rows, np.int64)
+    lens = indptr[rows + 1] - indptr[rows]
+    total = int(lens.sum())
+    new_indptr = np.zeros(len(rows) + 1, np.int64)
+    np.cumsum(lens, out=new_indptr[1:])
+    if total == 0: return new_indptr, np.empty(0, np.int32)
+    off = np.arange(total) - np.repeat(new_indptr[:-1], lens) + np.repeat(indptr[rows], lens)
+    return new_indptr, indices[off]

@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "membershipdt"
 version = "0.1.0"
 description = "Decision trees and random forests over variable-length sets of categorical tokens (membership splits)"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.25"]
 
@@ -13,7 +14,11 @@ dependencies = ["numpy>=1.25"]
 test = ["pytest", "scipy", "scikit-learn"]
 
 [tool.setuptools]
+package-dir = {"" = "src"}
 packages = ["membershipdt"]
+
+[tool.setuptools.package-data]
+membershipdt = ["*.pyx"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

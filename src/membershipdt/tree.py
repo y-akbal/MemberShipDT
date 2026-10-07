@@ -1,6 +1,6 @@
 from __future__ import annotations
 import numpy as np
-from .encoding import as_csr
+from .encoding import as_csr, frequency_perm, remap
 from . import _builder_py
 
 try:
@@ -39,12 +39,23 @@ class MembershipDecisionTree:
         if isinstance(mf, float): return max(1, int(mf * V))
         return int(mf)
 
-    def fit(self, X, y, sample_weight=None):
-        indptr, indices, V, vocab = as_csr(X, None, True)
+    PARAMS = ("max_depth", "min_samples_leaf", "min_samples_split", "max_features", "random_state", "backend")
+
+    def get_params(self): return {k: getattr(self, k) for k in self.PARAMS}
+    def clone(self, **over): return type(self)(**{**self.get_params(), **over})
+
+    def prepare(self, X, y, sample_weight, n_features):
+        indptr, indices, V, vocab = as_csr(X, n_features, True)
+        V = max(V, n_features or 0)
         self.vocab_, self.n_features_ = vocab, V
+        self.perm_, self.inv_ = frequency_perm(indices, V)
+        indptr, indices = remap(indptr, indices, self.inv_)
         self.classes_, yb = check_y(y)
         w = np.ones(len(yb)) if sample_weight is None else np.asarray(sample_weight, np.float64)
-        self.fit_encoded(indptr, indices, yb, w)
+        return indptr, indices, yb, w
+
+    def fit(self, X, y, sample_weight=None, n_features=None):
+        self.fit_encoded(*self.prepare(X, y, sample_weight, n_features))
         return self
 
     def fit_encoded(self, indptr, indices, yb, w):
@@ -54,7 +65,14 @@ class MembershipDecisionTree:
         self.tree_ = b.build_tree(indptr, indices, yb, w, self.n_features_, md, int(self.min_samples_leaf), int(self.min_samples_split), self.resolve_max_features(self.n_features_), int(seed))
         return self
 
-    def encode(self, X): return as_csr(X, self.vocab_ if self.vocab_ is not None else self.n_features_, False)[:2]
+    def encode(self, X):
+        indptr, indices = as_csr(X, self.vocab_ if self.vocab_ is not None else self.n_features_, False)[:2]
+        return remap(indptr, indices, self.inv_) if getattr(self, "inv_", None) is not None else (indptr, indices)
+
+    @property
+    def feature_(self):
+        f = self.tree_["feature"]
+        return np.where(f >= 0, self.perm_[np.maximum(f, 0)], -1) if getattr(self, "perm_", None) is not None else f
 
     def apply(self, X):
         indptr, indices = self.encode(X)
@@ -78,7 +96,9 @@ class MembershipDecisionTree:
     @property
     def n_leaves(self): return int((self.tree_["feature"] < 0).sum())
 
-    def token_name(self, t): return self.vocab_.id_to_token[t] if self.vocab_ is not None else t
+    def token_name(self, t):
+        t = int(self.perm_[t]) if getattr(self, "perm_", None) is not None else int(t)
+        return self.vocab_.id_to_token[t] if self.vocab_ is not None else t
 
     def to_text(self, node=0, depth=0):
         t = self.tree_
