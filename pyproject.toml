@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel", "Cython>=3.0", "numpy>=1.25"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "membershipdt"
+version = "0.1.0"
+description = "Decision trees and random forests over variable-length sets of categorical tokens (membership splits)"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.25"]
+
+[project.optional-dependencies]
+test = ["pytest", "scipy", "scikit-learn"]
+
+[tool.setuptools]
+packages = ["membershipdt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

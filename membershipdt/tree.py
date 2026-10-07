@@ -1,0 +1,88 @@
+from __future__ import annotations
+import numpy as np
+from .encoding import as_csr
+from . import _builder_py
+
+try:
+    from . import _builder_cy
+except ImportError:
+    _builder_cy = None
+
+BACKENDS = {"python": _builder_py, "cython": _builder_cy}
+
+
+def get_backend(name):
+    if name == "auto": return _builder_cy or _builder_py
+    b = BACKENDS.get(name)
+    if b is None: raise ValueError(f"backend {name!r} unavailable")
+    return b
+
+
+def check_y(y):
+    y = np.asarray(y)
+    classes = np.unique(y)
+    if len(classes) > 2: raise ValueError("binary labels only")
+    if len(classes) == 1: classes = np.array([0, 1]) if classes[0] in (0, 1) else np.array([classes[0], classes[0]])
+    return classes, (y == classes[1]).astype(np.float64)
+
+
+class MembershipDecisionTree:
+    def __init__(self, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features=None, random_state=None, backend="auto"):
+        self.max_depth, self.min_samples_leaf, self.min_samples_split = max_depth, min_samples_leaf, min_samples_split
+        self.max_features, self.random_state, self.backend = max_features, random_state, backend
+
+    def resolve_max_features(self, V):
+        mf = self.max_features
+        if mf is None or mf == "all": return 0
+        if mf == "sqrt": return max(1, int(np.sqrt(V)))
+        if mf == "log2": return max(1, int(np.log2(V))) if V > 1 else 1
+        if isinstance(mf, float): return max(1, int(mf * V))
+        return int(mf)
+
+    def fit(self, X, y, sample_weight=None):
+        indptr, indices, V, vocab = as_csr(X, None, True)
+        self.vocab_, self.n_features_ = vocab, V
+        self.classes_, yb = check_y(y)
+        w = np.ones(len(yb)) if sample_weight is None else np.asarray(sample_weight, np.float64)
+        self.fit_encoded(indptr, indices, yb, w)
+        return self
+
+    def fit_encoded(self, indptr, indices, yb, w):
+        b = get_backend(self.backend)
+        seed = np.random.SeedSequence(self.random_state).generate_state(1, np.uint64)[0] if self.random_state is not None else np.random.SeedSequence().generate_state(1, np.uint64)[0]
+        md = (1 << 30) if self.max_depth is None else int(self.max_depth)
+        self.tree_ = b.build_tree(indptr, indices, yb, w, self.n_features_, md, int(self.min_samples_leaf), int(self.min_samples_split), self.resolve_max_features(self.n_features_), int(seed))
+        return self
+
+    def encode(self, X): return as_csr(X, self.vocab_ if self.vocab_ is not None else self.n_features_, False)[:2]
+
+    def apply(self, X):
+        indptr, indices = self.encode(X)
+        return self.apply_encoded(indptr, indices)
+
+    def apply_encoded(self, indptr, indices):
+        t = self.tree_
+        return get_backend(self.backend).apply(indptr, indices, t["feature"], t["left"], t["right"])
+
+    def leaf_proba(self):
+        t = self.tree_
+        p1 = np.where(t["n_total"] > 0, t["n_pos"] / np.where(t["n_total"] > 0, t["n_total"], 1), 0.5)
+        return np.stack([1 - p1, p1], 1)
+
+    def predict_proba(self, X): return self.leaf_proba()[self.apply(X)]
+    def predict(self, X): return self.classes_[(self.predict_proba(X)[:, 1] > 0.5).astype(int)]
+
+    @property
+    def n_nodes(self): return len(self.tree_["feature"])
+
+    @property
+    def n_leaves(self): return int((self.tree_["feature"] < 0).sum())
+
+    def token_name(self, t): return self.vocab_.id_to_token[t] if self.vocab_ is not None else t
+
+    def to_text(self, node=0, depth=0):
+        t = self.tree_
+        pad = "  " * depth
+        if t["feature"][node] < 0: return f"{pad}leaf n={t['n_total'][node]:g} p1={t['n_pos'][node] / max(t['n_total'][node], 1):.3f}\n"
+        name = self.token_name(int(t["feature"][node]))
+        return f"{pad}{name!r} not in X:\n" + self.to_text(t["left"][node], depth + 1) + f"{pad}{name!r} in X:\n" + self.to_text(t["right"][node], depth + 1)
