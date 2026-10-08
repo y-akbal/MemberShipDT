@@ -1,10 +1,7 @@
 from __future__ import annotations
 import numpy as np
 
-try:
-    from . import _builder_cy as _cy
-except ImportError:
-    _cy = None
+from . import _builder_cy
 
 __all__ = ["Vocab", "encode", "as_csr"]
 
@@ -78,12 +75,7 @@ def frequency_perm(indices, V):
 
 def remap(indptr, indices, inv):
     if indices.size == 0: return indptr, indices
-    if _cy is not None: return indptr, _cy.remap(np.ascontiguousarray(indptr, np.int64), np.ascontiguousarray(indices, np.int32), np.ascontiguousarray(inv, np.int32))
-    n = indptr.shape[0] - 1
-    new = inv[indices].astype(np.int64)
-    row = np.repeat(np.arange(n, dtype=np.int64), np.diff(indptr))
-    order = np.lexsort((new, row))
-    return indptr, new[order].astype(np.int32)
+    return indptr, _builder_cy.remap(np.ascontiguousarray(indptr, np.int64), np.ascontiguousarray(indices, np.int32), np.ascontiguousarray(inv, np.int32))
 
 
 def take_rows(indptr, indices, rows):

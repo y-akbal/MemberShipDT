@@ -1,6 +1,4 @@
 import numpy as np
-import pytest
-from membershipdt.tree import BACKENDS
 
 
 def random_sets(rng, n, V, max_len, p_pos=None):
@@ -17,7 +15,3 @@ def dense(X, V):
     D = np.zeros((len(X), V), np.int8)
     for i, row in enumerate(X): D[i, list(set(row))] = 1
     return D
-
-
-@pytest.fixture(params=[k for k, v in BACKENDS.items() if v is not None])
-def backend(request): return request.param

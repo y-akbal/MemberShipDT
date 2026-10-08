@@ -33,17 +33,17 @@ def test_auc_against_sklearn():
     assert abs(neg_log_loss(y, p) + sk.log_loss(y, p)) < 1e-9
 
 
-def test_cross_val_score_shapes(backend):
+def test_cross_val_score_shapes():
     rng = np.random.default_rng(0)
     X, y = random_sets(rng, 400, 40, 6)
-    s = cross_val_score(MembershipDecisionTree(max_depth=4, backend=backend), X, y, cv=4, scoring="auc", random_state=0)
+    s = cross_val_score(MembershipDecisionTree(max_depth=4), X, y, cv=4, scoring="auc", random_state=0)
     assert s.shape == (4,) and np.all((s >= 0) & (s <= 1))
 
 
-def test_grid_search_finds_reasonable_depth(backend):
+def test_grid_search_finds_reasonable_depth():
     rng = np.random.default_rng(1)
     X, y = random_sets(rng, 1500, 50, 8)
-    gs = GridSearchCV(MembershipDecisionTree(backend=backend), {"max_depth": [1, 3, 6, None], "min_samples_leaf": [1, 10]}, cv=3, scoring="accuracy", random_state=0).fit(X, y)
+    gs = GridSearchCV(MembershipDecisionTree(), {"max_depth": [1, 3, 6, None], "min_samples_leaf": [1, 10]}, cv=3, scoring="accuracy", random_state=0).fit(X, y)
     assert len(gs.cv_results_) == 8
     assert gs.best_params_["max_depth"] != 1
     assert gs.best_score_ == max(r["mean"] for r in gs.cv_results_)
@@ -51,38 +51,37 @@ def test_grid_search_finds_reasonable_depth(backend):
     assert gs.predict_proba([["unseen"]]).shape == (1, 2)
 
 
-def test_randomized_search_and_forest(backend):
+def test_randomized_search_and_forest():
     rng = np.random.default_rng(2)
     X, y = random_sets(rng, 600, 40, 6)
-    rs = RandomizedSearchCV(MembershipRandomForest(n_estimators=10, backend=backend, random_state=0), {"max_depth": [2, 4, 8, None], "max_features": ["sqrt", 3, None], "min_samples_leaf": [1, 3, 5]}, n_iter=5, cv=3, scoring="neg_log_loss", random_state=0).fit(X, y)
+    rs = RandomizedSearchCV(MembershipRandomForest(n_estimators=10, random_state=0), {"max_depth": [2, 4, 8, None], "max_features": ["sqrt", 3, None], "min_samples_leaf": [1, 3, 5]}, n_iter=5, cv=3, scoring="neg_log_loss", random_state=0).fit(X, y)
     assert len(rs.cv_results_) == 5
     assert hasattr(rs, "best_estimator_") and rs.best_estimator_.n_estimators == 10
     assert set(rs.predict(X)) <= {0, 1}
 
 
-def test_cv_is_deterministic(backend):
+def test_cv_is_deterministic():
     rng = np.random.default_rng(3)
     X, y = random_sets(rng, 300, 30, 5)
-    a = GridSearchCV(MembershipDecisionTree(backend=backend), {"max_depth": [2, 4]}, cv=3, random_state=5).fit(X, y)
-    b = GridSearchCV(MembershipDecisionTree(backend=backend), {"max_depth": [2, 4]}, cv=3, random_state=5).fit(X, y)
+    a = GridSearchCV(MembershipDecisionTree(), {"max_depth": [2, 4]}, cv=3, random_state=5).fit(X, y)
+    b = GridSearchCV(MembershipDecisionTree(), {"max_depth": [2, 4]}, cv=3, random_state=5).fit(X, y)
     assert [r["mean"] for r in a.cv_results_] == [r["mean"] for r in b.cv_results_]
 
 
-def test_remap_keeps_token_names(backend):
+def test_remap_keeps_token_names():
     X = [["rare", "common"], ["common"], ["common", "mid"], ["mid"], ["common", "mid", "rare"]]
     y = [1, 0, 1, 1, 1]
-    t = MembershipDecisionTree(backend=backend).fit(X, y)
+    t = MembershipDecisionTree().fit(X, y)
     txt = t.to_text()
     assert "'common'" in txt or "'mid'" in txt or "'rare'" in txt
     assert t.inv_[t.vocab_.get("common")] == 0
     np.testing.assert_array_equal(t.predict(X), y)
-    f = MembershipRandomForest(n_estimators=5, bootstrap=False, max_features=None, backend=backend).fit(X, y)
+    f = MembershipRandomForest(n_estimators=5, bootstrap=False, max_features=None).fit(X, y)
     np.testing.assert_array_equal(f.predict(X), y)
     imp = f.feature_importances()
     assert imp.shape == (3,) and abs(imp.sum() - 1) < 1e-9
 
 
-@pytest.mark.skipif(__import__("membershipdt.encoding", fromlist=["_cy"])._cy is None, reason="cython not built")
 def test_remap_kernel_matches_numpy():
     from membershipdt import encoding as E
     rng = np.random.default_rng(0)
@@ -91,10 +90,9 @@ def test_remap_kernel_matches_numpy():
         indptr = np.cumsum([0] + [len(r) for r in rows]).astype(np.int64)
         indices = np.concatenate(rows).astype(np.int32) if indptr[-1] else np.empty(0, np.int32)
         perm, inv = E.frequency_perm(indices, V)
-        cy, cy_arr = E._cy, E._cy
-        E._cy = None
-        try: ref = E.remap(indptr, indices, inv)[1]
-        finally: E._cy = cy
+        row = np.repeat(np.arange(n), np.diff(indptr))
+        new = inv[indices].astype(np.int64)
+        ref = new[np.lexsort((new, row))].astype(np.int32)
         got = E.remap(indptr, indices, inv)[1]
         np.testing.assert_array_equal(got, ref)
         for i in range(n): assert np.all(np.diff(got[indptr[i]:indptr[i + 1]]) > 0)

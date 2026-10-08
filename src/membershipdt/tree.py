@@ -1,21 +1,7 @@
 from __future__ import annotations
 import numpy as np
 from .encoding import as_csr, frequency_perm, remap
-from . import _builder_py
-
-try:
-    from . import _builder_cy
-except ImportError:
-    _builder_cy = None
-
-BACKENDS = {"python": _builder_py, "cython": _builder_cy}
-
-
-def get_backend(name):
-    if name == "auto": return _builder_cy or _builder_py
-    b = BACKENDS.get(name)
-    if b is None: raise ValueError(f"backend {name!r} unavailable")
-    return b
+from . import _builder_cy
 
 
 def check_y(y):
@@ -27,9 +13,9 @@ def check_y(y):
 
 
 class MembershipDecisionTree:
-    def __init__(self, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features=None, random_state=None, backend="auto"):
+    def __init__(self, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features=None, random_state=None):
         self.max_depth, self.min_samples_leaf, self.min_samples_split = max_depth, min_samples_leaf, min_samples_split
-        self.max_features, self.random_state, self.backend = max_features, random_state, backend
+        self.max_features, self.random_state = max_features, random_state
 
     def resolve_max_features(self, V):
         mf = self.max_features
@@ -39,7 +25,7 @@ class MembershipDecisionTree:
         if isinstance(mf, float): return max(1, int(mf * V))
         return int(mf)
 
-    PARAMS = ("max_depth", "min_samples_leaf", "min_samples_split", "max_features", "random_state", "backend")
+    PARAMS = ("max_depth", "min_samples_leaf", "min_samples_split", "max_features", "random_state")
 
     def get_params(self): return {k: getattr(self, k) for k in self.PARAMS}
     def clone(self, **over): return type(self)(**{**self.get_params(), **over})
@@ -59,10 +45,9 @@ class MembershipDecisionTree:
         return self
 
     def fit_encoded(self, indptr, indices, yb, w):
-        b = get_backend(self.backend)
         seed = np.random.SeedSequence(self.random_state).generate_state(1, np.uint64)[0] if self.random_state is not None else np.random.SeedSequence().generate_state(1, np.uint64)[0]
         md = (1 << 30) if self.max_depth is None else int(self.max_depth)
-        self.tree_ = b.build_tree(indptr, indices, yb, w, self.n_features_, md, int(self.min_samples_leaf), int(self.min_samples_split), self.resolve_max_features(self.n_features_), int(seed))
+        self.tree_ = _builder_cy.build_tree(indptr, indices, yb, w, self.n_features_, md, int(self.min_samples_leaf), int(self.min_samples_split), self.resolve_max_features(self.n_features_), int(seed))
         return self
 
     def encode(self, X):
@@ -80,7 +65,7 @@ class MembershipDecisionTree:
 
     def apply_encoded(self, indptr, indices):
         t = self.tree_
-        return get_backend(self.backend).apply(indptr, indices, t["feature"], t["left"], t["right"])
+        return _builder_cy.apply(indptr, indices, t["feature"], t["left"], t["right"])
 
     def leaf_proba(self):
         t = self.tree_

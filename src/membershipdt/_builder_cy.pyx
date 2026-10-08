@@ -1,4 +1,4 @@
-# cython: boundscheck=False, wraparound=False, cdivision=True, initializedcheck=False, language_level=3
+cimport cython
 import numpy as np
 from libc.stdlib cimport malloc, realloc, free
 from libc.stdint cimport uint64_t, int64_t, int32_t
@@ -16,6 +16,10 @@ cdef class Stack:
     cdef int32_t* side
     cdef int64_t n, cap
 
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    @cython.initializedcheck(False)
     def __cinit__(self, int64_t cap=64):
         self.n, self.cap = 0, cap
         self.start = <int64_t*>malloc(cap * sizeof(int64_t)); self.end = <int64_t*>malloc(cap * sizeof(int64_t))
@@ -23,6 +27,10 @@ cdef class Stack:
 
     def __dealloc__(self): free(self.start); free(self.end); free(self.depth); free(self.parent); free(self.side)
 
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    @cython.initializedcheck(False)
     cdef void push(self, int64_t start, int64_t end, int32_t depth, int32_t parent, int32_t side) noexcept nogil:
         if self.n == self.cap:
             self.cap *= 2
@@ -40,6 +48,10 @@ cdef class Nodes:
     cdef double* n_pos
     cdef int64_t n, cap
 
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    @cython.initializedcheck(False)
     def __cinit__(self, int64_t cap=64):
         self.n, self.cap = 0, cap
         self.feature = <int32_t*>malloc(cap * sizeof(int32_t)); self.left = <int32_t*>malloc(cap * sizeof(int32_t)); self.right = <int32_t*>malloc(cap * sizeof(int32_t))
@@ -47,6 +59,10 @@ cdef class Nodes:
 
     def __dealloc__(self): free(self.feature); free(self.left); free(self.right); free(self.n_total); free(self.n_pos)
 
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    @cython.initializedcheck(False)
     cdef int64_t add(self, int32_t parent, int32_t side, double N, double P) noexcept nogil:
         if self.n == self.cap:
             self.cap *= 2
@@ -60,6 +76,10 @@ cdef class Nodes:
         self.n += 1
         return node
 
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    @cython.initializedcheck(False)
     def arrays(self):
         out = dict(feature=np.empty(self.n, np.int32), left=np.empty(self.n, np.int32), right=np.empty(self.n, np.int32), n_total=np.empty(self.n, np.float64), n_pos=np.empty(self.n, np.float64))
         cdef int32_t[::1] of = out["feature"], ol = out["left"], orr = out["right"]
@@ -79,6 +99,10 @@ cdef class Workspace:
     cdef int64_t* tmp
     cdef int64_t V
 
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    @cython.cdivision(True)
+    @cython.initializedcheck(False)
     def __cinit__(self, int64_t V, int64_t n):
         self.V = V
         self.cnt = <double*>malloc(V * sizeof(double)); self.pos = <double*>malloc(V * sizeof(double)); self.score = <double*>malloc(V * sizeof(double))
@@ -89,6 +113,10 @@ cdef class Workspace:
     def __dealloc__(self): free(self.cnt); free(self.pos); free(self.score); free(self.mark); free(self.touched); free(self.tmp)
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 cdef inline uint64_t splitmix64(uint64_t x) noexcept nogil:
     x += <uint64_t>0x9E3779B97F4A7C15
     x = (x ^ (x >> 30)) * <uint64_t>0xBF58476D1CE4E5B9
@@ -96,6 +124,10 @@ cdef inline uint64_t splitmix64(uint64_t x) noexcept nogil:
     return x ^ (x >> 31)
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 cdef inline uint64_t xorshift(uint64_t* s) noexcept nogil:
     cdef uint64_t x = s[0]
     x ^= x << 13
@@ -106,6 +138,10 @@ cdef inline uint64_t xorshift(uint64_t* s) noexcept nogil:
 
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 cdef inline bint has_row(const int64_t[::1] indptr, const int32_t[::1] indices, int64_t s, int32_t t) noexcept nogil:
     cdef int64_t lo = indptr[s], hi = indptr[s + 1], mid
     if hi - lo <= 24:
@@ -119,12 +155,20 @@ cdef inline bint has_row(const int64_t[::1] indptr, const int32_t[::1] indices, 
     return indices[lo] == t
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 cdef inline int64_t walk(const int64_t[::1] indptr, const int32_t[::1] indices, const int32_t[::1] feature, const int32_t[::1] left, const int32_t[::1] right, int64_t s, int64_t node) noexcept nogil:
     while feature[node] >= 0:
         node = right[node] if has_row(indptr, indices, s, feature[node]) else left[node]
     return node
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 cdef int threads(int n_jobs) noexcept:
     return os.cpu_count() or 1 if n_jobs <= 0 else n_jobs
 
@@ -132,6 +176,10 @@ cdef int threads(int n_jobs) noexcept:
 cdef inline double proxy(double n, double p) noexcept nogil: return 0.0 if n <= 0 else (p * p + (n - p) * (n - p)) / n
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 def build_tree(const int64_t[::1] indptr, const int32_t[::1] indices, const double[::1] y, const double[::1] w, int64_t V, int64_t max_depth, double min_samples_leaf, double min_samples_split, int64_t max_features, uint64_t seed):
     cdef int64_t[::1] samples = np.flatnonzero(np.asarray(w) > 0).astype(np.int64)
     cdef int64_t n = samples.shape[0]
@@ -201,6 +249,10 @@ def build_tree(const int64_t[::1] indptr, const int32_t[::1] indices, const doub
     return nodes.arrays()
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 def apply(const int64_t[::1] indptr, const int32_t[::1] indices, const int32_t[::1] feature, const int32_t[::1] left, const int32_t[::1] right, int n_jobs=0):
     cdef int64_t n = indptr.shape[0] - 1, i
     cdef int nth = threads(n_jobs)
@@ -211,6 +263,10 @@ def apply(const int64_t[::1] indptr, const int32_t[::1] indices, const int32_t[:
     return out
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 def predict_forest(const int64_t[::1] indptr, const int32_t[::1] indices, const int32_t[::1] feature, const int32_t[::1] left, const int32_t[::1] right, const double[::1] p1, const int64_t[::1] offsets, int n_jobs=0):
     cdef int64_t n = indptr.shape[0] - 1, T = offsets.shape[0] - 1, i, k
     cdef int nth = threads(n_jobs)
@@ -228,10 +284,18 @@ cdef extern from "stdlib.h":
     void qsort(void* base, size_t n, size_t size, int (*cmp)(const void*, const void*) noexcept nogil) noexcept nogil
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 cdef int cmp_i32(const void* a, const void* b) noexcept nogil:
     return (<int32_t*>a)[0] - (<int32_t*>b)[0]
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 cdef inline void sort_row(int32_t* a, int64_t n) noexcept nogil:
     cdef int64_t i, j
     cdef int32_t v
@@ -245,6 +309,10 @@ cdef inline void sort_row(int32_t* a, int64_t n) noexcept nogil:
         a[j + 1] = v
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 def remap(const int64_t[::1] indptr, const int32_t[::1] indices, const int32_t[::1] inv, int n_jobs=0):
     cdef int64_t n = indptr.shape[0] - 1, i, j
     cdef int nth = threads(n_jobs)

@@ -4,8 +4,8 @@ this repo is for fitting decision trees (and random forests) when your rows are 
 not fixed columns. a row is like `["apple", "milk", "eggs"]`, another row is `["beer"]`. splits are
 `token in X` vs `token not in X`, gini criterion, binary labels.
 
-python prototype in `_builder_py.py`, the real thing in `_builder_cy.pyx` (cython, nogil, openmp predict).
-both produce identical trees, tests check that.
+the builder is `_builder_cy.pyx` (cython, nogil, openmp predict). a numpy prototype was used to develop it
+and the cython tree is tested against a dense brute-force gini reference.
 
 ## install
 
@@ -14,6 +14,9 @@ pip install -e .
 ```
 
 needs numpy + cython + a C compiler with openmp.
+
+the extension is compiled with `-march=native` by default (so the .so only runs on cpus like the one that built it).
+for a portable build: `MEMBERSHIPDT_MARCH=portable pip install -e .`, or pick an arch: `MEMBERSHIPDT_MARCH=x86-64-v3`.
 
 ## use
 
@@ -57,4 +60,4 @@ or a pre-encoded `(indptr, indices)` CSR pair (then pass `n_features=`).
 
 ## bench
 
-`python bench/bench_tree.py cython` and `python bench/bench_forest.py cython` (after `pip install -e .`).
+`python bench/bench_tree.py` and `python bench/bench_forest.py` (after `pip install -e .`).

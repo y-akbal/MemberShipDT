@@ -3,20 +3,21 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from .encoding import as_csr, frequency_perm, remap
-from .tree import MembershipDecisionTree, check_y, get_backend
+from .tree import MembershipDecisionTree, check_y
+from . import _builder_cy
 
 
 class MembershipRandomForest:
-    def __init__(self, n_estimators=100, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features="sqrt", bootstrap=True, n_jobs=-1, random_state=None, backend="auto"):
+    def __init__(self, n_estimators=100, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features="sqrt", bootstrap=True, n_jobs=-1, random_state=None):
         self.n_estimators, self.max_depth, self.min_samples_leaf, self.min_samples_split = n_estimators, max_depth, min_samples_leaf, min_samples_split
-        self.max_features, self.bootstrap, self.n_jobs, self.random_state, self.backend = max_features, bootstrap, n_jobs, random_state, backend
+        self.max_features, self.bootstrap, self.n_jobs, self.random_state = max_features, bootstrap, n_jobs, random_state
 
     @property
     def threads(self): return os.cpu_count() or 1 if self.n_jobs in (None, -1, 0) else int(self.n_jobs)
 
-    def make_tree(self, seed): return MembershipDecisionTree(self.max_depth, self.min_samples_leaf, self.min_samples_split, self.max_features, int(seed), self.backend)
+    def make_tree(self, seed): return MembershipDecisionTree(self.max_depth, self.min_samples_leaf, self.min_samples_split, self.max_features, int(seed))
 
-    PARAMS = ("n_estimators", "max_depth", "min_samples_leaf", "min_samples_split", "max_features", "bootstrap", "n_jobs", "random_state", "backend")
+    PARAMS = ("n_estimators", "max_depth", "min_samples_leaf", "min_samples_split", "max_features", "bootstrap", "n_jobs", "random_state")
 
     def get_params(self): return {k: getattr(self, k) for k in self.PARAMS}
     def clone(self, **over): return type(self)(**{**self.get_params(), **over})
@@ -73,7 +74,7 @@ class MembershipRandomForest:
 
     def predict_proba(self, X):
         indptr, indices = self.encode(X)
-        p1 = get_backend(self.backend).predict_forest(indptr, indices, self.feature_, self.left_, self.right_, self.p1_, self.offsets_, self.threads)
+        p1 = _builder_cy.predict_forest(indptr, indices, self.feature_, self.left_, self.right_, self.p1_, self.offsets_, self.threads)
         return np.stack([1 - p1, p1], 1)
 
     def predict(self, X): return self.classes_[(self.predict_proba(X)[:, 1] > 0.5).astype(int)]
