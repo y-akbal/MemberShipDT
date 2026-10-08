@@ -3,6 +3,7 @@ import numpy as np
 from .encoding import as_csr, frequency_perm, remap
 from . import _builder_cy
 from . import serialize as S
+from .matching import Resolver
 
 
 def check_y(y):
@@ -36,10 +37,30 @@ def format_rules(rules, sort_by="n", max_rules=None):
     return "\n".join(format_rule(r) for r in rules[:max_rules]) + "\n"
 
 
-class MembershipDecisionTree:
-    def __init__(self, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features=None, random_state=None):
+class OOVMixin:
+    def split_tokens(self): raise NotImplementedError
+
+    def resolver(self):
+        if self.matcher is None or self.vocab_ is None: return None
+        key = (id(self.matcher), self.match_mode, self.match_threshold, self.match_k)
+        r = getattr(self, "_resolver", None)
+        if r is None or r.key != key:
+            names = sorted(self.split_tokens(), key=repr)
+            r = Resolver(self.matcher, names, {t: self.vocab_.token_to_id[t] for t in names}, self.match_mode, self.match_threshold, self.match_k)
+            r.key = key
+            self._resolver = r
+        return r
+
+    def encode(self, X):
+        indptr, indices = as_csr(X, self.vocab_ if self.vocab_ is not None else self.n_features_, False, self.resolver())[:2]
+        return remap(indptr, indices, self.inv_) if getattr(self, "inv_", None) is not None else (indptr, indices)
+
+
+class MembershipDecisionTree(OOVMixin):
+    def __init__(self, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features=None, random_state=None, matcher=None, match_mode="top1", match_threshold=0.0, match_k=1):
         self.max_depth, self.min_samples_leaf, self.min_samples_split = max_depth, min_samples_leaf, min_samples_split
         self.max_features, self.random_state = max_features, random_state
+        self.matcher, self.match_mode, self.match_threshold, self.match_k = matcher, match_mode, match_threshold, match_k
 
     def resolve_max_features(self, V):
         mf = self.max_features
@@ -49,7 +70,7 @@ class MembershipDecisionTree:
         if isinstance(mf, float): return max(1, int(mf * V))
         return int(mf)
 
-    PARAMS = ("max_depth", "min_samples_leaf", "min_samples_split", "max_features", "random_state")
+    PARAMS = ("max_depth", "min_samples_leaf", "min_samples_split", "max_features", "random_state", "matcher", "match_mode", "match_threshold", "match_k")
 
     def get_params(self): return {k: getattr(self, k) for k in self.PARAMS}
     def clone(self, **over): return type(self)(**{**self.get_params(), **over})
@@ -65,18 +86,19 @@ class MembershipDecisionTree:
         return indptr, indices, yb, w
 
     def fit(self, X, y, sample_weight=None, n_features=None):
+        self._resolver = None
         self.fit_encoded(*self.prepare(X, y, sample_weight, n_features))
         return self
+
+    def split_tokens(self):
+        f = self.tree_["feature"]
+        return {self.token_name(int(t)) for t in np.unique(f[f >= 0])}
 
     def fit_encoded(self, indptr, indices, yb, w):
         seed = np.random.SeedSequence(self.random_state).generate_state(1, np.uint64)[0] if self.random_state is not None else np.random.SeedSequence().generate_state(1, np.uint64)[0]
         md = (1 << 30) if self.max_depth is None else int(self.max_depth)
         self.tree_ = _builder_cy.build_tree(indptr, indices, yb, w, self.n_features_, md, int(self.min_samples_leaf), int(self.min_samples_split), self.resolve_max_features(self.n_features_), int(seed))
         return self
-
-    def encode(self, X):
-        indptr, indices = as_csr(X, self.vocab_ if self.vocab_ is not None else self.n_features_, False)[:2]
-        return remap(indptr, indices, self.inv_) if getattr(self, "inv_", None) is not None else (indptr, indices)
 
     @property
     def feature_(self):
@@ -114,7 +136,7 @@ class MembershipDecisionTree:
     @classmethod
     def from_json(cls, s):
         d = S.loads(s)
-        est = S.restore_common(cls(**d["params"]), d)
+        est = S.restore_common(cls(**{**d["params"], "matcher": None}), d)
         est.tree_ = S.tree_arrays(d["tree"])
         return est
 

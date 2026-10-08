@@ -22,12 +22,21 @@ class Vocab:
         return i
 
 
-def encode(X, vocab, grow=True):
+def lookup(row, t2i, resolve):
+    ids = set()
+    for t in row:
+        i = t2i.get(t)
+        if i is not None: ids.add(i)
+        elif resolve is not None: ids.update(resolve(t))
+    return sorted(ids)
+
+
+def encode(X, vocab, grow=True, resolve=None):
     indptr = np.empty(len(X) + 1, dtype=np.int64)
     indptr[0] = 0
     chunks, nnz, t2i, add = [], 0, vocab.token_to_id, vocab.add
     for r, row in enumerate(X):
-        ids = sorted({add(t) for t in row}) if grow else sorted({t2i[t] for t in row if t in t2i})
+        ids = sorted({add(t) for t in row}) if grow else lookup(row, t2i, resolve)
         nnz += len(ids)
         indptr[r + 1] = nnz
         chunks.append(ids)
@@ -48,7 +57,7 @@ def normalize_csr(indptr, indices, n_features):
     return np.cumsum(new_indptr), (key % V).astype(np.int32)
 
 
-def as_csr(X, vocab, grow):
+def as_csr(X, vocab, grow, resolve=None):
     if isinstance(X, tuple) and len(X) == 2 and hasattr(X[0], "__len__") and not isinstance(X[0], (list, set, frozenset)):
         indptr, indices = np.asarray(X[0]), np.asarray(X[1])
         V = max(int(indices.max()) + 1 if indices.size else 0, vocab or 0) if grow else vocab
@@ -61,7 +70,7 @@ def as_csr(X, vocab, grow):
         indptr, indices = normalize_csr(Xc.indptr, Xc.indices, V)
         return indptr, indices, V, None
     vocab = Vocab() if vocab is None or isinstance(vocab, int) else vocab
-    indptr, indices = encode(X, vocab, grow)
+    indptr, indices = encode(X, vocab, grow, resolve)
     return indptr, indices, len(vocab), vocab
 
 

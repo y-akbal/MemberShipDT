@@ -1,6 +1,7 @@
 import json
 import numpy as np
 from .encoding import Vocab
+from .matching import matcher_state, matcher_from_state
 
 JSONABLE = (str, int, float, bool, type(None))
 
@@ -28,11 +29,13 @@ def vocab_from(tokens):
 
 
 def common_state(est):
-    return dict(format=1, type=type(est).__name__, params=est.get_params(), classes=np.asarray(est.classes_).tolist(), n_features=int(est.n_features_), vocab=vocab_state(est.vocab_), perm=np.asarray(est.perm_).tolist())
+    params = {**est.get_params(), "matcher": matcher_state(est.matcher)}
+    return dict(format=1, type=type(est).__name__, params=params, classes=np.asarray(est.classes_).tolist(), n_features=int(est.n_features_), vocab=vocab_state(est.vocab_), perm=np.asarray(est.perm_).tolist())
 
 
 def restore_common(est, d):
     if d.get("type") != type(est).__name__: raise ValueError(f"json is a {d.get('type')}, not a {type(est).__name__}")
+    est.matcher = matcher_from_state(d["params"].get("matcher"))
     est.classes_, est.n_features_, est.vocab_ = np.array(d["classes"]), int(d["n_features"]), vocab_from(d["vocab"])
     est.perm_ = np.array(d["perm"], np.int32)
     est.inv_ = np.empty_like(est.perm_)

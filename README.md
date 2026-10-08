@@ -64,6 +64,31 @@ or a pre-encoded `(indptr, indices)` CSR pair (then pass `n_features=`).
   once, not per tree. hand in `(indptr, indices)` or a scipy csr to skip it entirely.
 - cv: `cross_val_score`, `GridSearchCV`, `RandomizedSearchCV`, scorers accuracy / auc / neg_log_loss / neg_brier.
 
+## unseen tokens (matchers)
+
+by default a token not seen at fit time is dropped. if you want it mapped onto known tokens, pass a `Matcher`.
+the contract: subclass `Matcher`, implement `match(token) -> [(known_token, score), ...]` best first. the estimator
+calls `bind(candidates)` once with the tokens the model actually splits on, you get them as `self.candidates`
+(override `build()` to index them). anything you return that is not a candidate raises. your matcher object is
+copied on bind and never mutated. implement `to_config()` and decorate with `@register` to make it survive `to_json`.
+
+```python
+from membershipdt import Matcher, RegexMatcher, NGramMatcher, register
+
+@register
+class PrefixMatcher(Matcher):
+    def __init__(self, n=4): self.n = n
+    def match(self, tok): return [(c, 1.0) for c in self.candidates if str(c)[:self.n] == str(tok)[:self.n]][:1]
+    def to_config(self): return dict(n=self.n)
+
+f = MembershipRandomForest(matcher=NGramMatcher(n=3, k=3), match_mode="union", match_threshold=0.4, match_k=2).fit(X, y)
+t = MembershipDecisionTree(matcher=RegexMatcher([(r"^price_\d+$", "price_*")])).fit(X, y)
+```
+
+`match_mode="top1"` substitutes the best match, `"union"` adds up to `match_k` matches. anything scoring below
+`match_threshold` is dropped. results are cached per distinct unseen token. only raw-token input is matched;
+pre-encoded ids are taken as is.
+
 ## bench
 
 `python bench/bench_tree.py` and `python bench/bench_forest.py` (after `pip install -e .`).

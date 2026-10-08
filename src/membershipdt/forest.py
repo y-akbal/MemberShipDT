@@ -3,27 +3,29 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from .encoding import as_csr, frequency_perm, remap
-from .tree import MembershipDecisionTree, check_y, leaf_rules, format_rules
+from .tree import MembershipDecisionTree, OOVMixin, check_y, leaf_rules, format_rules
 from . import _builder_cy
 from . import serialize as S
 
 
-class MembershipRandomForest:
-    def __init__(self, n_estimators=100, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features="sqrt", bootstrap=True, n_jobs=-1, random_state=None):
+class MembershipRandomForest(OOVMixin):
+    def __init__(self, n_estimators=100, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features="sqrt", bootstrap=True, n_jobs=-1, random_state=None, matcher=None, match_mode="top1", match_threshold=0.0, match_k=1):
         self.n_estimators, self.max_depth, self.min_samples_leaf, self.min_samples_split = n_estimators, max_depth, min_samples_leaf, min_samples_split
         self.max_features, self.bootstrap, self.n_jobs, self.random_state = max_features, bootstrap, n_jobs, random_state
+        self.matcher, self.match_mode, self.match_threshold, self.match_k = matcher, match_mode, match_threshold, match_k
 
     @property
     def threads(self): return os.cpu_count() or 1 if self.n_jobs in (None, -1, 0) else int(self.n_jobs)
 
     def make_tree(self, seed): return MembershipDecisionTree(self.max_depth, self.min_samples_leaf, self.min_samples_split, self.max_features, int(seed))
 
-    PARAMS = ("n_estimators", "max_depth", "min_samples_leaf", "min_samples_split", "max_features", "bootstrap", "n_jobs", "random_state")
+    PARAMS = ("n_estimators", "max_depth", "min_samples_leaf", "min_samples_split", "max_features", "bootstrap", "n_jobs", "random_state", "matcher", "match_mode", "match_threshold", "match_k")
 
     def get_params(self): return {k: getattr(self, k) for k in self.PARAMS}
     def clone(self, **over): return type(self)(**{**self.get_params(), **over})
 
     def fit(self, X, y, sample_weight=None, n_features=None):
+        self._resolver = None
         indptr, indices, V, vocab = as_csr(X, n_features, True)
         V = max(V, n_features or 0)
         self.vocab_, self.n_features_ = vocab, V
@@ -55,7 +57,9 @@ class MembershipRandomForest:
         self.p1_ = np.concatenate([e.leaf_proba()[:, 1] for e in self.estimators_])
         return self
 
-    def encode(self, X): return remap(*as_csr(X, self.vocab_ if self.vocab_ is not None else self.n_features_, False)[:2], self.inv_)
+    def split_tokens(self):
+        f = self.feature_
+        return {self.token_name(int(t)) for t in np.unique(f[f >= 0])}
 
     def token_name(self, t): return self.vocab_.id_to_token[int(self.perm_[t])] if self.vocab_ is not None else int(self.perm_[t])
 
@@ -64,7 +68,7 @@ class MembershipRandomForest:
     @classmethod
     def from_json(cls, s):
         d = S.loads(s)
-        f = S.restore_common(cls(**d["params"]), d)
+        f = S.restore_common(cls(**{**d["params"], "matcher": None}), d)
         f.estimators_ = []
         for td in d["estimators"]:
             t = f.make_tree(0)
