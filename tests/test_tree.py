@@ -96,3 +96,32 @@ def test_scipy_sparse_input():
     np.testing.assert_array_equal(t1.feature_, t2.feature_)
     assert set(t1.feature_[t1.feature_ >= 0]) <= set(range(20))
     np.testing.assert_array_equal(t1.predict(M), t2.predict_proba(M).argmax(1))
+
+def test_rules_cover_all_samples_and_match_proba():
+    rng = np.random.default_rng(7)
+    X, y = random_sets(rng, 400, 25, 6)
+    X = [[f"t{t}" for t in row] for row in X]
+    t = MembershipDecisionTree(max_depth=5).fit(X, y)
+    rules = t.rules()
+    assert len(rules) == t.n_leaves
+    assert abs(sum(r["n"] for r in rules) - 400) < 1e-9
+    leaves, proba = t.apply(X), t.predict_proba(X)[:, 1]
+    by_leaf = {r["leaf"]: r for r in rules}
+    for i, row in enumerate(X):
+        r = by_leaf[int(leaves[i])]
+        assert all((tok in row) == inside for tok, inside in r["conditions"])
+        assert abs(r["p1"] - proba[i]) < 1e-12
+    txt = t.to_rules(max_rules=3)
+    assert txt.count("\n") == 3 and txt.startswith("if ")
+
+
+def test_rules_trivial_tree():
+    t = MembershipDecisionTree().fit([["a"], ["a"]], [1, 1])
+    assert t.to_rules() == "if always: p1=1.000 (n=2)\n"
+
+
+def test_forest_rules():
+    from membershipdt import MembershipRandomForest
+    X = [["a", "b"], ["a"], ["b", "c"], ["c"], ["a", "c"], ["d"], ["b", "d"], ["a", "b", "d"]]
+    f = MembershipRandomForest(n_estimators=3, bootstrap=False, max_features=None).fit(X, [1, 1, 0, 0, 1, 0, 0, 1])
+    assert "'a' in X: p1=1.000" in f.to_rules(0) and "'a' not in X: p1=0.000" in f.to_rules(2)

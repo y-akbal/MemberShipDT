@@ -3,7 +3,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from .encoding import as_csr, frequency_perm, remap
-from .tree import MembershipDecisionTree, check_y
+from .tree import MembershipDecisionTree, check_y, leaf_rules, format_rules
 from . import _builder_cy
 
 
@@ -57,6 +57,9 @@ class MembershipRandomForest:
     def encode(self, X): return remap(*as_csr(X, self.vocab_ if self.vocab_ is not None else self.n_features_, False)[:2], self.inv_)
 
     def token_name(self, t): return self.vocab_.id_to_token[int(self.perm_[t])] if self.vocab_ is not None else int(self.perm_[t])
+
+    def rules(self, tree=0): return leaf_rules(self.estimators_[tree].tree_, self.token_name)
+    def to_rules(self, tree=0, sort_by="n", max_rules=None): return format_rules(self.rules(tree), sort_by, max_rules)
 
     def feature_importances(self):
         imp = np.zeros(self.n_features_)

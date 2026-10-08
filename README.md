@@ -29,10 +29,13 @@ y = [1, 1, 0, 0]
 t = MembershipDecisionTree(max_depth=5).fit(X, y)
 print(t.to_text())
 t.predict_proba([["a", "zzz"]])
+print(t.to_rules())            # one line per leaf / region, e.g. if 'a' in X and 'b' not in X: p1=0.250 (n=4)
+t.rules()                      # same thing as dicts: conditions, n, p1, leaf
 
 f = MembershipRandomForest(n_estimators=100, max_features="sqrt", n_jobs=-1, random_state=0).fit(X, y)
 f.predict_proba(X)
 f.feature_importances()
+print(f.to_rules(tree=0, max_rules=10))
 
 gs = GridSearchCV(MembershipRandomForest(n_estimators=50), {"max_depth": [4, 8, None], "min_samples_leaf": [1, 5]}, cv=5, scoring="auc").fit(X, y)
 gs.best_params_, gs.best_estimator_

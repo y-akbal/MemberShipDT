@@ -12,6 +12,29 @@ def check_y(y):
     return classes, (y == classes[1]).astype(np.float64)
 
 
+def leaf_rules(tree, name):
+    feature, left, right, N, P = tree["feature"], tree["left"], tree["right"], tree["n_total"], tree["n_pos"]
+    out, stack = [], [(0, ())]
+    while stack:
+        node, conds = stack.pop()
+        if feature[node] < 0: out.append(dict(conditions=conds, n=float(N[node]), p1=float(P[node] / N[node]) if N[node] > 0 else 0.5, leaf=int(node)))
+        else:
+            t = name(int(feature[node]))
+            stack.append((int(right[node]), conds + ((t, True),)))
+            stack.append((int(left[node]), conds + ((t, False),)))
+    return out
+
+
+def format_rule(r):
+    cond = " and ".join(f"{t!r} {'in' if inside else 'not in'} X" for t, inside in r["conditions"]) or "always"
+    return f"if {cond}: p1={r['p1']:.3f} (n={r['n']:g})"
+
+
+def format_rules(rules, sort_by="n", max_rules=None):
+    rules = sorted(rules, key=lambda r: -r[sort_by]) if sort_by else list(rules)
+    return "\n".join(format_rule(r) for r in rules[:max_rules]) + "\n"
+
+
 class MembershipDecisionTree:
     def __init__(self, max_depth=None, min_samples_leaf=1, min_samples_split=2, max_features=None, random_state=None):
         self.max_depth, self.min_samples_leaf, self.min_samples_split = max_depth, min_samples_leaf, min_samples_split
@@ -84,6 +107,9 @@ class MembershipDecisionTree:
     def token_name(self, t):
         t = int(self.perm_[t]) if getattr(self, "perm_", None) is not None else int(t)
         return self.vocab_.id_to_token[t] if self.vocab_ is not None else t
+
+    def rules(self): return leaf_rules(self.tree_, self.token_name)
+    def to_rules(self, sort_by="n", max_rules=None): return format_rules(self.rules(), sort_by, max_rules)
 
     def to_text(self, node=0, depth=0):
         t = self.tree_
