@@ -5,6 +5,7 @@ import numpy as np
 from .encoding import as_csr, frequency_perm, remap
 from .tree import MembershipDecisionTree, check_y, leaf_rules, format_rules
 from . import _builder_cy
+from . import serialize as S
 
 
 class MembershipRandomForest:
@@ -57,6 +58,19 @@ class MembershipRandomForest:
     def encode(self, X): return remap(*as_csr(X, self.vocab_ if self.vocab_ is not None else self.n_features_, False)[:2], self.inv_)
 
     def token_name(self, t): return self.vocab_.id_to_token[int(self.perm_[t])] if self.vocab_ is not None else int(self.perm_[t])
+
+    def to_json(self, **kw): return S.dumps({**S.common_state(self), "estimators": [S.tree_state(e.tree_) for e in self.estimators_]}, **kw)
+
+    @classmethod
+    def from_json(cls, s):
+        d = S.loads(s)
+        f = S.restore_common(cls(**d["params"]), d)
+        f.estimators_ = []
+        for td in d["estimators"]:
+            t = f.make_tree(0)
+            t.n_features_, t.vocab_, t.classes_, t.tree_ = f.n_features_, None, f.classes_, S.tree_arrays(td)
+            f.estimators_.append(t)
+        return f.pack()
 
     def rules(self, tree=0): return leaf_rules(self.estimators_[tree].tree_, self.token_name)
     def to_rules(self, tree=0, sort_by="n", max_rules=None): return format_rules(self.rules(tree), sort_by, max_rules)

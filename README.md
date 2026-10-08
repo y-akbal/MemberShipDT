@@ -37,6 +37,9 @@ f.predict_proba(X)
 f.feature_importances()
 print(f.to_rules(tree=0, max_rules=10))
 
+s = f.to_json()                               # plain json string, vocab + params + all trees
+f2 = MembershipRandomForest.from_json(s)      # same for MembershipDecisionTree
+
 gs = GridSearchCV(MembershipRandomForest(n_estimators=50), {"max_depth": [4, 8, None], "min_samples_leaf": [1, 5]}, cv=5, scoring="auc").fit(X, y)
 gs.best_params_, gs.best_estimator_
 ```

@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 from .encoding import as_csr, frequency_perm, remap
 from . import _builder_cy
+from . import serialize as S
 
 
 def check_y(y):
@@ -107,6 +108,15 @@ class MembershipDecisionTree:
     def token_name(self, t):
         t = int(self.perm_[t]) if getattr(self, "perm_", None) is not None else int(t)
         return self.vocab_.id_to_token[t] if self.vocab_ is not None else t
+
+    def to_json(self, **kw): return S.dumps({**S.common_state(self), "tree": S.tree_state(self.tree_)}, **kw)
+
+    @classmethod
+    def from_json(cls, s):
+        d = S.loads(s)
+        est = S.restore_common(cls(**d["params"]), d)
+        est.tree_ = S.tree_arrays(d["tree"])
+        return est
 
     def rules(self): return leaf_rules(self.tree_, self.token_name)
     def to_rules(self, sort_by="n", max_rules=None): return format_rules(self.rules(), sort_by, max_rules)
