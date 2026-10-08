@@ -173,6 +173,10 @@ cdef int threads(int n_jobs) noexcept:
     return os.cpu_count() or 1 if n_jobs <= 0 else n_jobs
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+@cython.initializedcheck(False)
 cdef inline double proxy(double n, double p) noexcept nogil: return 0.0 if n <= 0 else (p * p + (n - p) * (n - p)) / n
 
 
