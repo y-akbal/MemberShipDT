@@ -49,3 +49,10 @@ def test_sample_weight_zero_rows_ignored():
     y = [1, 1, 0, 0, 1]
     f = MembershipRandomForest(n_estimators=5, bootstrap=False, max_features=None, random_state=0).fit(X, y, sample_weight=[1, 1, 1, 1, 0])
     for e in f.estimators_: assert e.tree_["n_total"][0] == 4
+
+
+@pytest.mark.parametrize("bootstrap", [True, False])
+def test_length_mismatch_raises(bootstrap):
+    f = MembershipRandomForest(n_estimators=3, bootstrap=bootstrap, random_state=0)
+    with pytest.raises(ValueError, match="y has 3"): f.fit([["a"], ["b"]], [0, 1, 1])
+    with pytest.raises(ValueError, match="sample_weight has 1"): f.fit([["a"], ["b"]], [0, 1], sample_weight=[1.0])

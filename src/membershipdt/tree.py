@@ -13,6 +13,12 @@ def check_y(y):
     return classes, (y == classes[1]).astype(np.float64)
 
 
+def check_lengths(indptr, yb, w):
+    n = len(indptr) - 1
+    if len(yb) != n: raise ValueError(f"X has {n} rows but y has {len(yb)}")
+    if len(w) != n: raise ValueError(f"X has {n} rows but sample_weight has {len(w)}")
+
+
 def leaf_rules(tree, name):
     feature, left, right, N, P = tree["feature"], tree["left"], tree["right"], tree["n_total"], tree["n_pos"]
     out, stack = [], [(0, ())]
@@ -62,6 +68,7 @@ class MembershipDecisionTree:
         indptr, indices = remap(indptr, indices, self.inv_)
         self.classes_, yb = check_y(y)
         w = np.ones(len(yb)) if sample_weight is None else np.asarray(sample_weight, np.float64)
+        check_lengths(indptr, yb, w)
         return indptr, indices, yb, w
 
     def fit(self, X, y, sample_weight=None, n_features=None):

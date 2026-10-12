@@ -61,6 +61,16 @@ def test_degenerate(X, y):
     assert t.predict_proba(X).shape == (len(X), 2)
 
 
+@pytest.mark.parametrize("y,w,msg", [
+    ([0, 1, 1], None, "y has 3"),
+    ([0], None, "y has 1"),
+    ([0, 1], [1.0], "sample_weight has 1"),
+    ([0, 1], [1.0, 1.0, 1.0], "sample_weight has 3"),
+])
+def test_length_mismatch_raises(y, w, msg):
+    with pytest.raises(ValueError, match=msg): MembershipDecisionTree().fit([["a"], ["b"]], y, sample_weight=w)
+
+
 def test_token_in_every_row_never_split():
     X = [["a", "b"], ["a"], ["a", "c"], ["a", "b", "c"]]
     t = MembershipDecisionTree().fit(X, [1, 0, 1, 0])

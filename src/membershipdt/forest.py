@@ -3,7 +3,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from .encoding import as_csr, frequency_perm, remap
-from .tree import MembershipDecisionTree, check_y, leaf_rules, format_rules
+from .tree import MembershipDecisionTree, check_y, check_lengths, leaf_rules, format_rules
 from . import _builder_cy
 from . import serialize as S
 
@@ -32,6 +32,7 @@ class MembershipRandomForest:
         self.classes_, yb = check_y(y)
         n = len(yb)
         base = np.ones(n) if sample_weight is None else np.asarray(sample_weight, np.float64)
+        check_lengths(indptr, yb, base)
         seeds = np.random.SeedSequence(self.random_state).spawn(self.n_estimators)
 
         def fit_one(ss):
